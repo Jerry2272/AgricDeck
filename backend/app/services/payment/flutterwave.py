@@ -9,19 +9,24 @@ async def initialize_payment(
     reference: str,
     metadata: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
-    """Initialize payment with Paystack"""
-    url = "https://api.paystack.co/transaction/initialize"
+    """Initialize payment with Flutterwave"""
+    url = "https://api.flutterwave.com/v3/payments"
     
     headers = {
-        "Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}",
+        "Authorization": f"Bearer {settings.FLUTTERWAVE_SECRET_KEY}",
         "Content-Type": "application/json"
     }
     
     data = {
-        "email": email,
-        "amount": int(amount * 100),  # Convert to kobo
-        "reference": reference,
-        "metadata": metadata or {}
+        "tx_ref": reference,
+        "amount": amount,
+        "currency": "NGN",
+        "redirect_url": f"{settings.FLUTTERWAVE_CALLBACK_URL or 'http://localhost:8000/api/v1/payments/callback'}/flutterwave",
+        "payment_options": "card,banktransfer,ussd",
+        "customer": {
+            "email": email
+        },
+        "meta": metadata or {}
     }
     
     async with httpx.AsyncClient() as client:
@@ -31,11 +36,11 @@ async def initialize_payment(
 
 
 async def verify_payment(reference: str) -> Dict[str, Any]:
-    """Verify payment status with Paystack"""
-    url = f"https://api.paystack.co/transaction/verify/{reference}"
+    """Verify payment status with Flutterwave"""
+    url = f"https://api.flutterwave.com/v3/transactions/{reference}/verify"
     
     headers = {
-        "Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}",
+        "Authorization": f"Bearer {settings.FLUTTERWAVE_SECRET_KEY}",
         "Content-Type": "application/json"
     }
     
@@ -51,18 +56,17 @@ async def create_transfer_recipient(
     account_name: str
 ) -> Dict[str, Any]:
     """Create transfer recipient for withdrawals"""
-    url = "https://api.paystack.co/transferrecipient"
+    url = "https://api.flutterwave.com/v3/beneficiaries"
     
     headers = {
-        "Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}",
+        "Authorization": f"Bearer {settings.FLUTTERWAVE_SECRET_KEY}",
         "Content-Type": "application/json"
     }
     
     data = {
-        "type": "nuban",
-        "name": account_name,
+        "account_bank": bank_code,
         "account_number": account_number,
-        "bank_code": bank_code,
+        "beneficiary_name": account_name,
         "currency": "NGN"
     }
     
@@ -73,44 +77,32 @@ async def create_transfer_recipient(
 
 
 async def initiate_transfer(
-    recipient_code: str,
+    account_number: str,
+    bank_code: str,
     amount: float,
     reference: str,
-    reason: str = "Farmer withdrawal"
+    narration: str = "Farmer withdrawal"
 ) -> Dict[str, Any]:
     """Initiate transfer to farmer bank account"""
-    url = "https://api.paystack.co/transfer"
+    url = "https://api.flutterwave.com/v3/transfers"
     
     headers = {
-        "Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}",
+        "Authorization": f"Bearer {settings.FLUTTERWAVE_SECRET_KEY}",
         "Content-Type": "application/json"
     }
     
     data = {
-        "source": "balance",
-        "amount": int(amount * 100),  # Convert to kobo
-        "recipient": recipient_code,
+        "account_bank": bank_code,
+        "account_number": account_number,
+        "amount": amount,
+        "narration": narration,
+        "currency": "NGN",
         "reference": reference,
-        "reason": reason
+        "callback_url": f"{settings.FLUTTERWAVE_CALLBACK_URL or 'http://localhost:8000/api/v1/payments/callback'}/flutterwave/transfer"
     }
     
     async with httpx.AsyncClient() as client:
         response = await client.post(url, json=data, headers=headers)
-        response.raise_for_status()
-        return response.json()
-
-
-async def verify_transfer(reference: str) -> Dict[str, Any]:
-    """Verify transfer status"""
-    url = f"https://api.paystack.co/transfer/verify/{reference}"
-    
-    headers = {
-        "Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}",
-        "Content-Type": "application/json"
-    }
-    
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, headers=headers)
         response.raise_for_status()
         return response.json()
 
